@@ -1,11 +1,30 @@
+import os
+import json
 import streamlit as st
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
-# 1. Setup Google Sheets Connection
+# 1. Hybrid Setup: Works both Locally and on Streamlit Cloud
 def get_google_sheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    # PATH A: Local Execution (looks for credentials.json in project folder)
+    if os.path.exists("credentials.json"):
+        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+        
+    # PATH B: Streamlit Cloud Execution (pulls from st.secrets)
+    elif "gcp_service_account" in st.secrets:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], 
+            scopes=scope
+        )
+    else:
+        st.error("No valid credentials found! Add credentials.json locally or configure st.secrets online.")
+        st.stop()
+        
     client = gspread.authorize(creds)
     return client.open("Web Chat Red TAMI Data")
 
@@ -36,7 +55,7 @@ def get_next_index(current_index, user_answer):
                 
     return current_index + 1  # Fallback
 
-# Helper to extract available options from JumpLogic string (e.g., "Yes->3; No->4" -> ["Yes", "No"])
+# Helper to extract available options from JumpLogic string
 def get_options_for_question(index):
     if index >= len(jump_logics) or index < 0:
         return []
@@ -83,7 +102,6 @@ if not st.session_state.survey_complete and st.session_state.current_q_index != 
     options = get_options_for_question(st.session_state.current_q_index)
     if options:
         st.write("---")
-        # Display options side-by-side using Streamlit columns
         cols = st.columns(len(options))
         for idx, option in enumerate(options):
             if cols[idx].button(option, use_container_width=True):
@@ -92,8 +110,6 @@ if not st.session_state.survey_complete and st.session_state.current_q_index != 
 # 6. Handle User Input (either from Chat Bar or Buttons)
 if not st.session_state.survey_complete:
     chat_bar_input = st.chat_input("Type here...")
-    
-    # Prioritize button inputs over the text entry box
     user_input = incoming_input if incoming_input else chat_bar_input
 
     if user_input:
@@ -116,14 +132,10 @@ if not st.session_state.survey_complete:
             
         # PHASE 2: Capture Survey Answers
         else:
-            # Save the answer mapped directly to its sequential index position
             st.session_state.user_answers[st.session_state.current_q_index] = user_input
-            
-            # Determine next destination question index
             next_index = get_next_index(st.session_state.current_q_index, user_input)
             st.session_state.current_q_index = next_index
             
-            # Check if there are more questions remaining
             if st.session_state.current_q_index < len(questions):
                 next_q = questions[st.session_state.current_q_index]
                 bot_response = f"Got it, **{st.session_state.user_id}**.\n\n**Question {st.session_state.current_q_index + 1}:** {next_q}"
@@ -133,7 +145,7 @@ if not st.session_state.survey_complete:
                 st.session_state.messages.append({"role": "assistant", "content": bot_response})
                 st.rerun()
             else:
-                # SURVEY FINISHED: Build and write final row instantly
+                # SURVEY FINISHED
                 st.session_state.survey_complete = True
                 
                 final_row = [st.session_state.user_id]
