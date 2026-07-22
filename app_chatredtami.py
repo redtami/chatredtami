@@ -83,7 +83,7 @@ if "user_answers" not in st.session_state:
 if "survey_complete" not in st.session_state:
     st.session_state.survey_complete = False
 
-st.title("💬 Google Sheets Survey Chatbot")
+st.title("💬 Soy TAMI, te acompaño para prevenir el cáncer de mama")
 
 # Show initial greeting asking for ID
 if not st.session_state.messages:
